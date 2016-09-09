@@ -1,0 +1,67 @@
+apiVersion: v1
+items:
+- apiVersion: extensions/v1beta1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "6"
+    creationTimestamp: 2016-09-09T10:11:38Z
+    generation: 12
+    labels:
+      run: observer
+    name: observer
+    namespace: default
+    resourceVersion: "4787"
+    selfLink: /apis/extensions/v1beta1/namespaces/default/deployments/observer
+    uid: cbbe6b84-7675-11e6-9304-68f72840e7df
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        run: observer
+    strategy:
+      rollingUpdate:
+        maxSurge: 1
+        maxUnavailable: 1
+      type: RollingUpdate
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          run: observer
+      spec:
+        containers:
+        - args:
+          - configmaps
+          env:
+          - name: KUBECONFIG
+            value: /.kube/config
+          image: openshift/observe:latest
+          imagePullPolicy: Always
+          name: observer
+          ports:
+          - containerPort: 8080
+            hostPort: 8080
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          volumeMounts:
+          - mountPath: /.kube/
+            name: kubeconfig
+        dnsPolicy: ClusterFirst
+        hostNetwork: true
+        restartPolicy: Always
+        securityContext: {}
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - configMap:
+            defaultMode: 420
+            name: kubeconfig
+          name: kubeconfig
+  status:
+    availableReplicas: 1
+    observedGeneration: 12
+    replicas: 1
+    updatedReplicas: 1
+kind: List
+metadata: {}
