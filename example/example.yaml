@@ -1,0 +1,34 @@
+apiVersion: v1
+items:
+- apiVersion: v1
+  data:
+    my-key: "Hello there!\n"
+  kind: ConfigMap
+  metadata:
+    name: alpine
+- apiVersion: extensions/v1beta1
+  kind: Deployment
+  metadata:
+    name: alpine
+  spec:
+    replicas: 1
+    template:
+      metadata:
+        labels:
+          run: alpine
+      spec:
+        containers:
+        - args:
+          - /bin/sleep
+          - "3600"
+          image: alpine
+          name: alpine
+          volumeMounts:
+          - mountPath: /etc/
+            name: my-config
+        volumes:
+        - configMap:
+            name: alpine
+          name: my-config
+kind: List
+metadata: {}
