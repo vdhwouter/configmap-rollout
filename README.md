@@ -67,6 +67,8 @@ Now update the alpine config map and change the message that will be echoed:
 ```
 $ kubectl edit cm/alpine
 configmap "alpine" edited
+$ kubectl get cm/alpine -o jsonpath='{.data}'
+map[my-key:Updated!]
 ```
 
 You should see a new rollout underway:
