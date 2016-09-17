@@ -32,16 +32,13 @@ fi
 
 
 # Create a copy of configmap/$2. This should be mounted on every deployment that has a
-# configmap triggered-by annotation. For now we just copy the first key since there is
-# no clean way currently to copy a configmap to another configmap.
-# Watch out for the outcome of https://github.com/kubernetes/kubernetes/pull/32367
+# configmap triggered-by annotation.
 # The deployment controller should add owner references to the copies of the configmap
 # in the replica sets it creates so that garbage collection can be facilitated.
-oc get configmap $2 -n $1 -o go-template='{{range $key, $value := .data}}{{$key}}={{$value}}{{end}}' > /tmp/$2.data
+oc get configmap $2 -n $1 -o yaml --export > /tmp/$2.data
 cmName=$2-$(md5sum /tmp/$2.data | head -c8)
 echo "Creating a copy for configmap \""${2}"\": "${cmName}""
-IFS='=' read key value <<< $(cat /tmp/$2.data)
-oc create configmap $cmName -n $1 --from-literal=$key=$value
+cat /tmp/$2.data | sed "s/name: $2/name: $cmName/" | oc create -f -
 
 
 for d in $triggered

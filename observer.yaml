@@ -33,16 +33,13 @@ items:
       read resource name <<< \"$triggeredby\"\n\tif [ \"$2\" == \"$name\" ]\n\tthen\n\t\ttriggered+=($d)\n\tfi\ndone\n\n#
       If nothing is triggered then exit.\nif [ ${#triggered[@]} == 0 ]\nthen\n    exit
       0\nfi\n\n\n# Create a copy of configmap/$2. This should be mounted on every deployment
-      that has a\n# configmap triggered-by annotation. For now we just copy the first
-      key since there is\n# no clean way currently to copy a configmap to another configmap.\n#
-      Watch out for the outcome of https://github.com/kubernetes/kubernetes/pull/32367\n#
-      The deployment controller should add owner references to the copies of the configmap\n#
-      in the replica sets it creates so that garbage collection can be facilitated.\noc
-      get configmap $2 -n $1 -o go-template='{{range $key, $value := .data}}{{$key}}={{$value}}{{end}}'
-      > /tmp/$2.data\ncmName=$2-$(md5sum /tmp/$2.data | head -c8)\necho \"Creating a
-      copy for configmap \\\"\"${2}\"\\\": \"${cmName}\"\"\nIFS='=' read key value <<<
-      $(cat /tmp/$2.data)\noc create configmap $cmName -n $1 --from-literal=$key=$value\n\n\nfor
-      d in $triggered\ndo\n\techo \"Triggering a new rollout for deployment \\\"\"${d}\"\\\"
+      that has a\n# configmap triggered-by annotation.\n# The deployment controller
+      should add owner references to the copies of the configmap\n# in the replica sets
+      it creates so that garbage collection can be facilitated.\noc get configmap $2
+      -n $1 -o yaml --export > /tmp/$2.data\ncmName=$2-$(md5sum /tmp/$2.data | head
+      -c8)\necho \"Creating a copy for configmap \\\"\"${2}\"\\\": \"${cmName}\"\"\ncat
+      /tmp/$2.data | sed \"s/name: $2/name: $cmName/\" | oc create -f -\n\n\nfor d in
+      $triggered\ndo\n\techo \"Triggering a new rollout for deployment \\\"\"${d}\"\\\"
       based on configmap \\\"\"${2}\"\\\" update...\"\n\t# The controller will need
       to identify which volume has to be updated. It should\n\t# be given a list of
       container names[0], look into those containers and identify which\n\t# one is
