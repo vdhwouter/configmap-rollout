@@ -1,6 +1,6 @@
 ### Config map rollout
 
-This is a proof-of-concept for https://github.com/kubernetes/kubernetes/pull/31701.
+A Kubernetes custom controller for facilitating ConfigMap rollouts. This is a proof-of-concept for https://github.com/kubernetes/kubernetes/pull/31701.
 
 Supposing you are running a local Kubernetes cluster via `hack/local-cluster-up.sh`, clone this repository under /tmp:
 ```sh
@@ -14,13 +14,7 @@ $ cd /tmp/configmap-rollout
 
 2) The script that runs every time a config map is created or updated (trigger.sh) mounted in the Deployment as a ConfigMap.
 
-3) A kubeconfig that works ootb with `local-cluster-up.sh` mounted in the Deployment as a ConfigMap. If you need a different kubeconfig, delete the existing one and add yours:
-```sh
-$ kubectl delete cm kubeconfig
-configmap "kubeconfig" deleted
-$ kubectl create cm kubeconfig --from-file=$KUBECONFIG
-configmap "kubeconfig" created
-```
+3) A kubeconfig that works ootb with `local-cluster-up.sh` mounted in the Deployment as a ConfigMap. If you need a different kubeconfig, delete the existing one and add yours.
 
 Create the custom controller that will update Deployments on ConfigMap updates:
 ```sh
