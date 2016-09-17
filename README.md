@@ -27,58 +27,56 @@ deployment "observer" created
 
 ### Example
 
+Create a `demo` namespace and follow the example:
+
 ```sh
-$ kubectl create -f example/example.yaml
+$ kubectl create -f example/example.yaml -n demo
 configmap "alpine" created
 deployment "alpine" created
 ```
 
-At this point, you should have the following pods and config maps in your namespace:
+At this point, you should have the following pods and config maps in the `demo` namespace:
 ```sh
-$ kubectl get po
+$ kubectl get po -n demo
 NAME                        READY     STATUS    RESTARTS   AGE
 alpine-928338976-59vhm      1/1       Running   0          17s
-observer-3223417557-xf4aj   1/1       Running   0          2m
 ```
 ```sh
-$ kubectl get cm
+$ kubectl get cm -n demo
 NAME         DATA      AGE
 alpine       1         19s
-kubeconfig   1         2m
-trigger      1         2m
 ```
 
-We are interested specifically in the alpine deployment and config map. You should be able to inspect our custom configuration in the alpine pod with the following command:
+You should be able to inspect our custom configuration in the alpine pod with the following command:
 ```sh
-$ kubectl exec alpine-928338976-59vhm -i -t -- cat /etc/my-key
+$ kubectl exec -n demo alpine-928338976-59vhm -i -t -- cat /etc/my-key
 Hello there!
 ```
 
 Currently, there is no relation between the two resources other than the one (ConfigMap) being mounted in the other (Deployment). All you need in order to enable automatic rollouts in case of config map updates is to add a `deployment.kubernetes.io/triggered-by: configmap/alpine` annotation in the Deployment. This should be done by `kubectl set trigger` which is proposed in https://github.com/kubernetes/kubernetes/pull/31701 - for now we will add it via `kubectl annotate`:
 ```sh
-$ kubectl annotate deploy/alpine deployment.kubernetes.io/triggered-by=configmap/alpine
+$ kubectl annotate deploy/alpine deployment.kubernetes.io/triggered-by=configmap/alpine -n demo
 deployment "alpine" annotated
 ```
 
 Now update the alpine config map and change the message that will be echoed:
 ```sh
-$ kubectl edit cm/alpine
+$ kubectl edit cm/alpine -n demo
 configmap "alpine" edited
-$ kubectl get cm/alpine -o jsonpath='{.data}'
+$ kubectl get cm/alpine -o jsonpath='{.data}' -n demo
 map[my-key:Updated!]
 ```
 
 You should see a new rollout underway:
 ```sh
-$ kubectl get po
+$ kubectl get po -n demo
 NAME                        READY     STATUS              RESTARTS   AGE
 alpine-1077172096-zg3h2     0/1       ContainerCreating   0          3s
 alpine-928338976-59vhm      1/1       Terminating         0          4m
-observer-3223417557-xf4aj   1/1       Running             0          6m
 ```
 
 Inspect our configuration inside the new pod:
-```
-$ kubectl exec alpine-1077172096-zg3h2 -i -t -- cat /etc/my-key
+```sh
+$ kubectl exec -n demo alpine-1077172096-zg3h2 -i -t -- cat /etc/my-key
 Updated!
 ```
