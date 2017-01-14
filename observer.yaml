@@ -1,58 +1,52 @@
 apiVersion: v1
 items:
 - apiVersion: v1
-  data:
-    config: |
-      apiVersion: v1
-      clusters:
-      - cluster:
-          insecure-skip-tls-verify: true
-          server: http://127.0.0.1:8080
-        name: local
-      contexts:
-      - context:
-          cluster: local
-          user: ""
-        name: local
-      current-context: local
-      kind: Config
-      preferences: {}
-      users: []
-  kind: ConfigMap
-  metadata:
-    name: kubeconfig
-  
-- apiVersion: v1
-  data:
-    trigger.sh: "#!/bin/bash\n\nset -e\n\n# Get the list of all deployments in the same
-      namespace. If we ever move this into a controller\n# we should use a ConfigMapRefIndex
-      to index the cache so we won't end up requeueing configs that\n# are copies.\ndeployments=$(oc
-      get deployment -n $1 | awk '{print $1}')\n\n\ntriggered=()\nfor d in $deployments\ndo\n\tif
-      [ \"$d\" == \"NAME\" ]\n\tthen\n\t    continue\n\tfi\n\n\ttriggeredby=\"$(oc get
-      deployment \"${d}\" -n $1 -o go-template='{{index .metadata.annotations \"deployment.kubernetes.io/triggered-by\"}}')\"\n\tIFS='/'
-      read resource name <<< \"$triggeredby\"\n\tif [ \"$2\" == \"$name\" ]\n\tthen\n\t\ttriggered+=($d)\n\tfi\ndone\n\n#
-      If nothing is triggered then exit.\nif [ ${#triggered[@]} == 0 ]\nthen\n    exit
-      0\nfi\n\n\n# Create a copy of configmap/$2. This should be mounted on every deployment
-      that has a\n# configmap triggered-by annotation.\n# The deployment controller
-      should add owner references to the copies of the configmap\n# in the replica sets
-      it creates so that garbage collection can be facilitated.\noc get configmap $2
-      -n $1 -o yaml --export > /tmp/$2.data\ncmName=$2-$(md5sum /tmp/$2.data | head
-      -c8)\necho \"Creating a copy for configmap \\\"\"${2}\"\\\": \"${cmName}\"\"\ncat
-      /tmp/$2.data | sed \"s/name: $2/name: $cmName/\" | oc create -f -\n\n\nfor d in
-      $triggered\ndo\n\techo \"Triggering a new rollout for deployment \\\"\"${d}\"\\\"
-      based on configmap \\\"\"${2}\"\\\" update...\"\n\t# The controller will need
-      to identify which volume has to be updated. It should\n\t# be given a list of
-      container names[0], look into those containers and identify which\n\t# one is
-      using the volume we are interested in.\t\n\t#\n\t# [0] Maybe via another annotation?
-      It seems we need a generic trigger object that would\n\t# hold an object reference,
-      a slice of container names, and maybe a way to disable the\n\t# trigger, similar
-      to DeploymentTriggerImageChangeParams in OpenShift.\n\t# https://github.com/openshift/origin/blob/master/pkg/deploy/api/types.go#L378\n\tvolumeName=$(oc
-      get deployment/$d -n $1 -o jsonpath='{.spec.template.spec.volumes[0].name}')\n\toc
-      set volume deployment/$d -n $1 --add --overwrite --name=$volumeName -t configmap
-      --configmap-name=$cmName\ndone"
   kind: ConfigMap
   metadata:
     name: trigger
+  data:
+    trigger.sh: |-
+      #!/bin/bash
+      # This script is going to be fed to `oc observe`. `oc observe` should watch
+      # configmaps and on every event it passes down to this script two arguments:
+      # $1: namespace of the cm
+      # $2: name of the cm
+
+      set -o errexit
+      set -o pipefail
+      set -o nounset
+
+      # Get the list of all deployments in the same namespace.
+      deployments=$(oc get deployment -n $1 --no-headers -o name)
+
+
+      triggered=()
+      for d in $deployments; do
+        triggeredby=$(oc get ${d} -n $1 -o go-template='{{index .metadata.annotations "deployment.kubernetes.io/triggered-by"}}')
+        IFS='/' read resource name <<< $triggeredby
+        if [[ "$2" == "$name" ]]; then
+          triggered+=($d)
+        fi
+      done
+
+      # If nothing is triggered then exit.
+      if [ ${#triggered[@]} == 0 ]; then
+        exit 0
+      fi
+
+
+      # Create a copy of configmap/$2. This should be mounted on every deployment that has a
+      # configmap triggered-by annotation.
+      oc get configmap $2 -n $1 -o yaml --export > /tmp/$2.data
+      cmName=$2-$(md5sum /tmp/$2.data | head -c8)
+      echo "Creating a copy for configmap ${2}: ${cmName}"
+      cat /tmp/$2.data | sed "s/name: $2/name: $cmName/" | oc create -f -
+
+      for d in $triggered; do
+        echo "Triggering a new rollout for ${d} based on configmap ${2} update..."
+        volumeName=$(oc get $d -n $1 -o jsonpath='{.spec.template.spec.volumes[0].name}')
+        oc set volume $d -n $1 --add --overwrite --name=$volumeName -t configmap --configmap-name=$cmName
+      done
 
 - apiVersion: extensions/v1beta1
   kind: Deployment
@@ -60,35 +54,26 @@ items:
     name: observer
   spec:
     replicas: 1
+    revisionHistoryLimit: 0
     template:
       metadata:
         labels:
           run: observer
       spec:
         containers:
-        - args:
+        - image: openshift/observe:latest
+          args:
           - configmaps
           - --
-          - /tmp/configmap-rollout/trigger.sh
-          env:
-          - name: KUBECONFIG
-            value: /home/.kube/config
-          image: openshift/observe:latest
+          - /home/configmap-rollout/trigger.sh
           name: observer
           ports:
           - containerPort: 8080
-            hostPort: 8080
             protocol: TCP
           volumeMounts:
-          - mountPath: /home/.kube/
-            name: kubeconfig
-          - mountPath: /tmp/configmap-rollout
+          - mountPath: /home/configmap-rollout
             name: trigger
-        hostNetwork: true
         volumes:
-        - configMap:
-            name: kubeconfig
-          name: kubeconfig
         - configMap:
             defaultMode: 0777
             name: trigger
