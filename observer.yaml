@@ -75,7 +75,7 @@ items:
             name: trigger
         volumes:
         - configMap:
-            defaultMode: 0777
+            defaultMode: 0511
             name: trigger
           name: trigger
 kind: List
