@@ -19,7 +19,7 @@ changes in a ConfigMap (uses [oc observe](https://github.com/openshift/origin/bl
 ### Example
 
 ```sh
-$ kubectl create -f /example
+$ kubectl create -f example/
 configmap "alpine" created
 deployment "alpine" created
 ```
