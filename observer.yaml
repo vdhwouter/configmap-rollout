@@ -16,18 +16,23 @@ items:
       set -o pipefail
       set -o nounset
 
-      # Get the list of all deployments in the same namespace.
-      deployments=$(oc get deployment -n $1 --no-headers -o name)
+      # Get the list of all workload controllers in the same namespace.
+      controllers=$(oc get deployment -n $1 --no-headers -o name)
+      controllers+=$(oc get daemonsets -n $1 --no-headers -o name)
+      controllers+=$(oc get statefulsets -n $1 --no-headers -o name)
 
 
       triggered=()
-      for d in $deployments; do
-        triggeredby=$(oc get ${d} -n $1 -o go-template='{{index .metadata.annotations "deployment.kubernetes.io/triggered-by"}}')
+      set +e
+      for c in $controllers; do
+        triggeredby=$(oc get ${c} -n $1 -o go-template='{{index .metadata.annotations "workload.kubernetes.io/triggered-by"}}')
+        if [[ "$?" != "0" ]]; then continue; fi
         IFS='/' read resource name <<< $triggeredby
         if [[ "$2" == "$name" ]]; then
-          triggered+=($d)
+          triggered+=($c)
         fi
       done
+      set -e
 
       # If nothing is triggered then exit.
       if [ ${#triggered[@]} == 0 ]; then
@@ -35,17 +40,22 @@ items:
       fi
 
 
-      # Create a copy of configmap/$2. This should be mounted on every deployment that has a
+      # Create a copy of configmap/$2. This should be mounted on every controller that has a
       # configmap triggered-by annotation.
       oc get configmap $2 -n $1 -o yaml --export > /tmp/$2.data
       cmName=$2-$(md5sum /tmp/$2.data | head -c8)
       echo "Creating a copy for configmap ${2}: ${cmName}"
+      # Do not error out if the configmap already exists - inspect which controller that holds
+      # a triggered-by annotation can be updated with it.
+      set +e
       cat /tmp/$2.data | sed "s/name: $2/name: $cmName/" | oc create -f -
 
-      for d in $triggered; do
-        echo "Triggering a new rollout for ${d} based on configmap ${2} update..."
-        volumeName=$(oc get $d -n $1 -o jsonpath='{.spec.template.spec.volumes[0].name}')
-        oc set volume $d -n $1 --add --overwrite --name=$volumeName -t configmap --configmap-name=$cmName
+      for c in $triggered; do
+        echo "Triggering a new update for ${c} based on configmap/${2} update..."
+        # TODO: Identify if the updated configmap is mounted as a volume in this controller.
+        volumeName=$(oc get $c -n $1 -o jsonpath='{.spec.template.spec.volumes[0].name}')
+        # Continue on error so other controllers will get a chance to be updated
+        oc set volume $c -n $1 --add --overwrite --name=$volumeName -t configmap --configmap-name=$cmName
       done
 
 - apiVersion: extensions/v1beta1
